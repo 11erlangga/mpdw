@@ -99,13 +99,13 @@ ggplot() +
 Berdasarkan grafik di atas, dapat dilihat beberapa hal:
 
 <ul>
-  <li> Trend: 
+  <li> Trend <br>
        Karakteristik paling dominan pada data adalah adanya tren naik yang jelas. Meskipun terdapat fluktuasi jangka pendek, arah pergerakan harga
        secara umum terus meningkat sepanjang periode observasi, terutama pada akhir periode data latih dan berlanjut ke data uji.
-  <li> Cyclicality
+  <li> Cyclicality <br>
        Data menunjukkan adanya fluktuasi naik-turun yang tidak terjadi dalam interval waktu yang tetap dan teratur. Pola ini lebih tepat diklasifikasikan sebagai pola
        cyclical, yang umum ditemukan pada data ekonomi dan keuangan, bukan pola musiman (seasonal) yang terikat pada periode kalender tertentu.
-  <li> Volatility
+  <li> Volatility <br>
        Data memperlihatkan tingkat volatilitas yang tinggi, di mana terjadi perubahan harga yang signifikan dalam waktu singkat. Hal ini merupakan ciri khas dari data
        pasar saham yang dipengaruhi oleh banyak faktor eksternal.
 </ul>
@@ -457,13 +457,13 @@ ggplot(data = metrik.test, aes(x = reorder(Model, MASE), y = MASE)) +
 Beberapa alasan saya menggunakan MASE:
 
 <ol>
-  <li> Independen Terhadap Skala
+  <li> Independen Terhadap Skala <br>
        MASE tidak terpengaruh oleh skala asli data (apakah data dalam puluhan atau jutaan). Ini membuatnya adil saat membandingkan data set yang berbeda.
-  <li> Menghindari Masalah Pembagian dengan Nol
+  <li> Menghindari Masalah Pembagian dengan Nol <br>
        MAPE akan gagal jika ada nilai aktual nol dalam data. MASE tidak memiliki masalah ini.
-  <li> Simetris
+  <li> Simetris <br>
        MAPE cenderung memberikan "hukuman" lebih besar pada peramalan yang terlalu rendah daripada yang terlalu tinggi. MASE lebih simetris dan adil.
-  <li> Benchmark yang Jelas
+  <li> Benchmark yang Jelas <br>
        MASE memiliki interpretasi yang sangat kuat. Nilai MASE < 1 berarti model Anda lebih baik daripada model naive (yang meramalkan nilai periode sebelumnya). Nilai
        MASE > 1 berarti model Anda lebih buruk daripada model naif. Ini memberikan dasar perbandingan yang sangat jelas.
 </ol>
@@ -471,11 +471,11 @@ Beberapa alasan saya menggunakan MASE:
 Pada data latih, 
 
 <ul>
-  <li> Berdasarkan MASE
+  <li> Berdasarkan MASE <br>
        Grafik untuk data latih menunjukkan dua model yang berkinerja jauh lebih baik daripada yang lain: SES (MASE: 1.007) dan DES (MASE: 1.142). Nilai MASE mereka yang 
        mendekati 1 mengindikasikan bahwa performa mereka hampir sama baiknya dengan model naif pada data latih. Model-model lain, terutama varian SMA dan DMA dengan
        periode panjang, menunjukkan performa yang jauh lebih buruk (MASE > 2).
-  <li> Berdasarkan MAPE
+  <li> Berdasarkan MAPE <br>
        Hasil ini didukung oleh nilai MAPE. SES (2.96%) dan DES (3.30%) memiliki persentase kesalahan absolut rata-rata terendah. Ini berarti, saat
        dilatih, kedua model ini menghasilkan kesalahan yang sangat kecil relatif terhadap nilai data asli.
 </ul>
@@ -485,11 +485,11 @@ Pada data latih,
 Pada data uji,
 
 <ul>
-  <li> Berdasarkan MASE
+  <li> Berdasarkan MASE <br>
        Peringkat model berubah secara signifikan. Model DES (MASE: 1.839) menjadi pemenang yang jelas, diikuti oleh DMA.N.5 (MASE: 1.974). Yang menarik, SES—model terbaik
        pada data latih—menunjukkan kinerja yang jauh lebih buruk di sini (MASE: 2.917). Ini adalah indikasi bahwa model SES mengalami overfitting; ia terlalu "menghafal"
        data latih dan gagal menggeneralisasi polanya ke data baru.
-  <li> Berdasarkan MAPE
+  <li> Berdasarkan MAPE <br>
        BLagi-lagi, MAPE mengonfirmasi temuan MASE. DES (5.90%) dan DMA.N.5 (6.09%) menunjukkan persentase kesalahan terkecil. Ini berarti, pada data uji, ramalan dari
        model DES rata-rata hanya meleset sekitar 5.90% dari nilai aktual.
 </ul>
@@ -499,10 +499,3 @@ Pada data uji,
 Meskipun SES menunjukkan performa sedikit lebih baik pada data latih, kemampuannya untuk melakukan generalisasi pada data uji sangat buruk. Sebaliknya, DES menunjukkan kinerja yang kuat baik saat fitting (peringkat 2 pada data latih) maupun saat melakukan peramalan (peringkat 1 pada data uji), menjadikannya pilihan yang paling seimbang dan andal.
 
 Penting juga untuk dicatat bahwa semua model memiliki nilai MASE di atas 1 pada data uji, yang berarti tidak ada model yang berhasil mengalahkan performa model naif pada data baru. Ini menunjukkan bahwa data saham ini sangat sulit diprediksi.
-
-
-
-
-
-
-
