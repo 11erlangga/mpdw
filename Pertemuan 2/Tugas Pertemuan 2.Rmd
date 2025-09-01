@@ -1,0 +1,504 @@
+---
+title: "Tugas Pertemuan 2"
+output: html_document
+---
+
+# Import Dependencies
+
+```{r}
+library(forecast)
+library(graphics)
+library(TTR)
+library(TSA)
+library(rio)
+library(ggplot2)
+library(Metrics)
+```
+
+```{r}
+metrik_evaluasi <- function(aktual, ramalan){
+  mae <- Metrics::mae(aktual, ramalan)
+  mape <- Metrics::mape(aktual, ramalan)
+  mase <- Metrics::mase(aktual, ramalan, step_size = 1)
+  mdae <- Metrics::mdae(aktual, ramalan)
+  mse <- Metrics::mse(aktual, ramalan)
+  rmse <- Metrics::rmse(aktual, ramalan)
+  smape <- Metrics::smape(aktual, ramalan)
+  sse <- Metrics::sse(aktual, ramalan)
+  
+  return(c(mae, mape, mase, mdae, mse, rmse, smape, sse))
+}
+
+dma.forecast <- function(sma, dma, n, h = 1) {
+  At <- 2 * sma - dma
+  Bt <- (2 / (n - 1)) * (sma - dma)
+  
+  # Forecast in-sample (1-step ahead)
+  Ft_in <- c(NA, At + Bt)
+  
+  # Forecast out-of-sample (h-step ahead)
+  Ft_out <- At[length(At)] + Bt[length(Bt)] * (1:h)
+  
+  return(list(Forecast_in = Ft_in, Forecast_out = Ft_out[-1]))
+}
+```
+
+
+# Load Data
+
+```{r}
+data <- import("https://raw.githubusercontent.com/11erlangga/mpdw/refs/heads/main/Pertemuan%201/data/data_erlangga.csv")
+data$Date <- as.Date(data$Date, format = "%m/%d/%Y")
+head(data)
+```
+
+# Eksplorasi Data
+
+```{r}
+str(data)
+```
+
+```{r}
+data.bren <- ts(data$Close)
+data.bren
+```
+
+```{r}
+summary(data.bren)
+```
+# Dataset Splitting
+
+```{r}
+n <- nrow(data)
+n_train <- floor(0.8 * n)
+
+bren.train <- ts(data.bren[1:n_train],
+                 start = start(data.bren),
+                 frequency = frequency(data.bren))
+
+bren.test <- ts(data.bren[(n_train+1):n],
+                start = time(data.bren)[n_train+1],
+                frequency = frequency(data.bren))
+```
+
+```{r}
+ggplot() + 
+  geom_line(data = data[1:n_train,], aes(x = Date, y = Close, col = "Data Latih")) +
+  geom_line(data = data[n_train+1:n,], aes(x = Date, y = Close, col = "Data Uji")) +
+  labs(x = "Tanggal", y = "Harga Penutupan", color = "Legend") +
+   scale_colour_manual(name="Keterangan:", breaks = c("Data Latih", "Data Uji"),
+                      values = c("blue", "red")) + 
+  theme_bw() + theme(legend.position = "bottom",
+                     plot.caption = element_text(hjust=0.5, size=12))
+```
+
+Berdasarkan grafik di atas, dapat dilihat beberapa hal:
+
+<ul>
+  <li> Trend: 
+       Karakteristik paling dominan pada data adalah adanya tren naik yang jelas. Meskipun terdapat fluktuasi jangka pendek, arah pergerakan harga
+       secara umum terus meningkat sepanjang periode observasi, terutama pada akhir periode data latih dan berlanjut ke data uji.
+  <li> Cyclicality
+       Data menunjukkan adanya fluktuasi naik-turun yang tidak terjadi dalam interval waktu yang tetap dan teratur. Pola ini lebih tepat diklasifikasikan sebagai pola
+       cyclical, yang umum ditemukan pada data ekonomi dan keuangan, bukan pola musiman (seasonal) yang terikat pada periode kalender tertentu.
+  <li> Volatility
+       Data memperlihatkan tingkat volatilitas yang tinggi, di mana terjadi perubahan harga yang signifikan dalam waktu singkat. Hal ini merupakan ciri khas dari data
+       pasar saham yang dipengaruhi oleh banyak faktor eksternal.
+</ul>
+
+Kombinasi dari adanya tren yang kuat dan tidak adanya pola musiman yang jelas memberikan hipotesis awal untuk pemilihan model. Model peramalan yang cocok untuk kondisi seperti ini adalah model yang mampu menangkap komponen level dan tren. Oleh karena itu, model seperti **Double Exponential Smoothing (DES)** atau **Double Moving Average (DMA)** merupakan kandidat yang sangat sesuai untuk diterapkan pada data ini.
+
+# Single Moving Average
+
+```{r}
+sma.5 <- SMA(bren.train, n=5)
+sma.5.ramal <- c(NA, sma.5)
+
+sma.10 <- SMA(bren.train, n=10)
+sma.10.ramal <- c(NA, sma.10)
+
+sma.20 <- SMA(bren.train, n=20)
+sma.20.ramal <- c(NA, sma.20)
+
+sma.30 <- SMA(bren.train, n=30)
+sma.30.ramal <- c(NA, sma.30)
+```
+
+```{r}
+sma <- cbind(
+  aktual = data$Close,
+  pemulusan.5 = c(sma.5, rep(NA, n-n_train)),
+  ramalan.5 = c(sma.5.ramal, rep(sma.5.ramal[n_train+1], n-n_train-1)),
+  pemulusan.10 = c(sma.10, rep(NA, n-n_train)),
+  ramalan.10 = c(sma.10.ramal, rep(sma.10.ramal[n_train+1], n-n_train-1)),
+  pemulusan.20 = c(sma.20, rep(NA, n-n_train)),
+  ramalan.20 = c(sma.20.ramal, rep(sma.20.ramal[n_train+1], n-n_train-1)),
+  pemulusan.30 = c(sma.30, rep(NA, n-n_train)),
+  ramalan.30 = c(sma.30.ramal, rep(sma.30.ramal[n_train+1], n-n_train-1))
+)
+```
+
+```{r}
+ggplot() +
+  geom_line(aes(x = data$Date, y = sma[, "aktual"], color = "Aktual")) +
+  geom_line(aes(x = data$Date, y = sma[, "pemulusan.5"], color = "SMA N = 5")) +
+  geom_line(aes(x = data$Date, y = sma[, "ramalan.5"], color = "Ramalan N = 5"), linetype="dashed") +
+  geom_line(aes(x = data$Date, y = sma[, "pemulusan.10"], color = "SMA N = 10")) +
+  geom_line(aes(x = data$Date, y = sma[, "ramalan.10"], color = "Ramalan N = 10"), linetype="dashed") +
+  geom_line(aes(x = data$Date, y = sma[, "pemulusan.20"], color = "SMA N = 20")) +
+  geom_line(aes(x = data$Date, y = sma[, "ramalan.20"], color = "Ramalan N = 20"), linetype="dashed") +
+  geom_line(aes(x = data$Date, y = sma[, "pemulusan.30"], color = "SMA N = 30")) +
+  geom_line(aes(x = data$Date, y = sma[, "ramalan.30"], color = "Ramalan N = 30"), linetype="dashed") +
+  
+  labs(
+    title = "SMA BREN",
+    x = "Tanggal",
+    y = "Harga Penutupan",
+    color = "Keterangan"
+  ) +
+
+  scale_color_manual(values = c(
+    "Aktual" = "black",
+    "SMA N = 5" = "blue", "Ramalan N = 5" = "darkblue",
+    "SMA N = 10" = "red", "Ramalan N = 10" = "darkred",
+    "SMA N = 20" = "green4", "Ramalan N = 20" = "darkgreen",
+    "SMA N = 30" = "purple", "Ramalan N = 30" = "darkviolet"
+  )) +
+  
+  theme_bw()
+```
+
+```{r}
+metrik.sma.train <- data.frame("SMA N 5" = metrik_evaluasi(bren.train[6:n_train], sma[6:n_train, "ramalan.5"]),
+                               "SMA N 10" = metrik_evaluasi(bren.train[11:n_train], sma[11:n_train, "ramalan.10"]),
+                               "SMA N 20" = metrik_evaluasi(bren.train[21:n_train], sma[21:n_train, "ramalan.20"]),
+                               "SMA N 30" = metrik_evaluasi(bren.train[31:n_train], sma[31:n_train, "ramalan.30"]),
+                               row.names = c("MAE", "MAPE", "MASE", "MDAE", "MSE", "RMSE", "sMAPE", "SSE")
+                               )
+metrik.sma.train
+```
+
+
+```{r}
+metrik.sma.test <- data.frame("SMA N 5" = metrik_evaluasi(bren.test, sma[(n_train+1):n, "ramalan.5"]),
+                              "SMA N 10" = metrik_evaluasi(bren.test, sma[(n_train+1):n, "ramalan.10"]),
+                              "SMA N 20" = metrik_evaluasi(bren.test, sma[(n_train+1):n, "ramalan.20"]),
+                              "SMA N 30" = metrik_evaluasi(bren.test, sma[(n_train+1):n, "ramalan.30"]),
+                              row.names = c("MAE", "MAPE", "MASE", "MDAE", "MSE", "RMSE", "sMAPE", "SSE")
+                              )
+
+metrik.sma.test
+```
+
+# Double Moving Average
+
+```{r}
+dma.5 <- SMA(sma.5, n=5)
+dma.5.ramal <- dma.forecast(sma.5, dma.5, 5, h=length(bren.test))
+
+dma.10 <- SMA(sma.10, n=10)
+dma.10.ramal <- dma.forecast(sma.10, dma.10, 10, h=length(bren.test))
+
+dma.20 <- SMA(sma.20, n=20)
+dma.20.ramal <- dma.forecast(sma.20, dma.20, 20, h=length(bren.test))
+
+dma.30 <- SMA(sma.30, n=30)
+dma.30.ramal <- dma.forecast(sma.30, dma.30, 30, h=length(bren.test))
+```
+
+```{r}
+dma <- cbind(
+  aktual = data$Close,
+  pemulusan.5 = c(dma.5, rep(NA, n-n_train)),
+  ramalan.5 = c(dma.5.ramal$Forecast_in, dma.5.ramal$Forecast_out),
+  pemulusan.10 = c(dma.10, rep(NA, n-n_train)),
+  ramalan.10 = c(dma.10.ramal$Forecast_in, dma.10.ramal$Forecast_out),
+  pemulusan.20 = c(dma.20, rep(NA, n-n_train)),
+  ramalan.20 = c(dma.20.ramal$Forecast_in, dma.20.ramal$Forecast_out),
+  pemulusan.30 = c(dma.30, rep(NA, n-n_train)),
+  ramalan.30 = c(dma.30.ramal$Forecast_in, dma.30.ramal$Forecast_out)
+)
+```
+
+```{r}
+ggplot() +
+  geom_line(aes(x = data$Date, y = dma[, "aktual"], color = "Aktual")) +
+  geom_line(aes(x = data$Date, y = dma[, "pemulusan.5"], color = "DMA N = 5")) +
+  geom_line(aes(x = data$Date, y = dma[, "ramalan.5"], color = "Ramalan N = 5"), linetype="dashed") +
+  geom_line(aes(x = data$Date, y = dma[, "pemulusan.10"], color = "DMA N = 10")) +
+  geom_line(aes(x = data$Date, y = dma[, "ramalan.10"], color = "Ramalan N = 10"), linetype="dashed") +
+  geom_line(aes(x = data$Date, y = dma[, "pemulusan.20"], color = "DMA N = 20")) +
+  geom_line(aes(x = data$Date, y = dma[, "ramalan.20"], color = "Ramalan N = 20"), linetype="dashed") +
+  geom_line(aes(x = data$Date, y = dma[, "pemulusan.30"], color = "DMA N = 30")) +
+  geom_line(aes(x = data$Date, y = dma[, "ramalan.30"], color = "Ramalan N = 30"), linetype="dashed") +
+  
+  labs(
+    title = "DMA BREN",
+    x = "Tanggal",
+    y = "Harga Penutupan",
+    color = "Keterangan"
+  ) +
+  
+  scale_color_manual(values = c(
+    "Aktual" = "black",
+    "DMA N = 5" = "blue", "Ramalan N = 5" = "darkblue",
+    "DMA N = 10" = "red", "Ramalan N = 10" = "darkred",
+    "DMA N = 20" = "green4", "Ramalan N = 20" = "darkgreen",
+    "DMA N = 30" = "purple", "Ramalan N = 30" = "darkviolet"
+  )) +
+  
+  theme_bw()
+```
+
+```{r}
+metrik.dma.train <- data.frame("DMA N 5" = metrik_evaluasi(bren.train[10:n_train], dma[10:n_train, "ramalan.5"]),
+                               "DMA N 10" = metrik_evaluasi(bren.train[20:n_train], dma[20:n_train, "ramalan.10"]),
+                               "DMA N 20" = metrik_evaluasi(bren.train[40:n_train], dma[40:n_train, "ramalan.20"]),
+                               "DMA N 30" = metrik_evaluasi(bren.train[60:n_train], dma[60:n_train, "ramalan.30"]),
+                               row.names = c("MAE", "MAPE", "MASE", "MDAE", "MSE", "RMSE", "sMAPE", "SSE")
+                               )
+metrik.dma.train
+```
+
+
+```{r}
+metrik.dma.test <- data.frame("DMA N 5" = metrik_evaluasi(bren.test, dma[(n_train+1):n, "ramalan.5"]),
+                              "DMA N 10" = metrik_evaluasi(bren.test, dma[(n_train+1):n, "ramalan.10"]),
+                              "DMA N 20" = metrik_evaluasi(bren.test, dma[(n_train+1):n, "ramalan.20"]),
+                              "DMA N 30" = metrik_evaluasi(bren.test, dma[(n_train+1):n, "ramalan.30"]),
+                              row.names = c("MAE", "MAPE", "MASE", "MDAE", "MSE", "RMSE", "sMAPE", "SSE")
+                              )
+
+metrik.dma.test
+```
+
+# Single Exponential Smoothing
+
+```{r}
+ses <- HoltWinters(bren.train, gamma = FALSE, beta = FALSE, alpha = NULL)
+ses.ramal <- forecast(ses, h=length(bren.test))
+ses
+```
+
+```{r}
+length(c(NA, ses$fitted[, "xhat"], rep(NA, n-n_train)))
+```
+
+```{r}
+length(c(rep(NA, n_train), as.numeric(ses.ramal$mean)))
+```
+
+
+```{r}
+df_plot <- data.frame(
+  Date = data$Date,
+  Aktual = data$Close,
+  Fitted = c(NA, ses$fitted[, "xhat"], rep(NA, n-n_train)), 
+  Forecast = c(rep(NA, n_train), as.numeric(ses.ramal$mean))
+)
+
+ggplot(df_plot, aes(x = Date)) +
+  geom_line(aes(y = Aktual, color = "Aktual")) +
+  geom_line(aes(y = Fitted, color = "SES Fitted")) +
+  geom_line(aes(y = Forecast, color = "SES Forecast"), linetype = "dashed") +
+  
+  labs(
+    title = "Single Exponential Smoothing (SES) BREN",
+    x = "Tanggal",
+    y = "Harga Penutupan",
+    color = "Keterangan"
+  ) +
+  
+  scale_color_manual(values = c(
+    "Aktual" = "black",
+    "SES Fitted" = "blue",
+    "SES Forecast" = "red"
+  )) +
+  
+  theme_bw()
+```
+
+```{r}
+metrik.ses.train <- data.frame("SES" = metrik_evaluasi(bren.train[2:n_train], ses$fitted[, "xhat"]),
+                               row.names = c("MAE", "MAPE", "MASE", "MDAE", "MSE", "RMSE", "sMAPE", "SSE")
+                               )
+metrik.ses.train
+```
+
+```{r}
+metrik.ses.test <- data.frame("SES" = metrik_evaluasi(bren.test, ses.ramal$mean),
+                               row.names = c("MAE", "MAPE", "MASE", "MDAE", "MSE", "RMSE", "sMAPE", "SSE")
+                               )
+
+metrik.ses.test
+```
+
+
+# Double Exponential Smoothing
+
+```{r}
+des <- HoltWinters(bren.train, gamma = FALSE, beta = NULL, alpha = NULL)
+des.ramal <- forecast(des, h=length(bren.test))
+des
+```
+
+```{r}
+df_plot <- data.frame(
+  Date = data$Date,
+  Aktual = data$Close,
+  Fitted = c(NA, NA, des$fitted[, "xhat"], rep(NA, n-n_train)), 
+  Forecast = c(rep(NA, n_train), as.numeric(des.ramal$mean))
+)
+
+ggplot(df_plot, aes(x = Date)) +
+  geom_line(aes(y = Aktual, color = "Aktual")) +
+  geom_line(aes(y = Fitted, color = "DES Fitted")) +
+  geom_line(aes(y = Forecast, color = "DES Forecast"), linetype = "dashed") +
+  
+  labs(
+    title = "Double Exponential Smoothing (DES) BREN",
+    x = "Tanggal",
+    y = "Harga Penutupan",
+    color = "Keterangan"
+  ) +
+  
+  scale_color_manual(values = c(
+    "Aktual" = "black",
+    "DES Fitted" = "blue",
+    "DES Forecast" = "red"
+  )) +
+  
+  theme_bw()
+```
+
+```{r}
+metrik.des.train <- data.frame("DES" = metrik_evaluasi(bren.train[3:n_train], des$fitted[, "xhat"]),
+                               row.names = c("MAE", "MAPE", "MASE", "MDAE", "MSE", "RMSE", "sMAPE", "SSE")
+                               )
+metrik.des.train
+```
+
+```{r}
+metrik.des.test <- data.frame("DES" = metrik_evaluasi(bren.test, des.ramal$mean),
+                               row.names = c("MAE", "MAPE", "MASE", "MDAE", "MSE", "RMSE", "sMAPE", "SSE")
+                               )
+
+metrik.des.test
+```
+
+# Perbandingan Metrik Evaluasi
+
+```{r}
+metrik.train <- rbind(
+  t(metrik.sma.train),
+  t(metrik.dma.train),
+  t(metrik.ses.train),
+  t(metrik.des.train)
+)
+
+metrik.train
+```
+
+```{r}
+metrik.train <- as.data.frame(metrik.train)
+metrik.train$Model <- rownames(metrik.train)
+
+ggplot(data = metrik.train, aes(x = reorder(Model, MASE), y = MASE)) +
+  geom_bar(stat = "identity", fill = "blue", color = "black") +
+  
+  geom_text(aes(label = round(MASE, 3)), vjust = -0.5, size = 3.5) +
+  
+  labs(
+    title = "Perbandingan Kinerja Model pada Data Latih",
+    subtitle = "Berdasarkan Nilai Mean Absolute Scaled Error (MASE)",
+    x = "Model",
+    y = "Nilai MASE"
+  ) +
+  
+  theme_minimal() +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1))
+```
+
+```{r}
+metrik.test <- rbind(
+  t(metrik.sma.test),
+  t(metrik.dma.test),
+  t(metrik.ses.test),
+  t(metrik.des.test)
+)
+
+metrik.test
+```
+
+```{r}
+metrik.test <- as.data.frame(metrik.test)
+metrik.test$Model <- rownames(metrik.test)
+
+ggplot(data = metrik.test, aes(x = reorder(Model, MASE), y = MASE)) +
+  geom_bar(stat = "identity", fill = "blue", color = "black") +
+  
+  geom_text(aes(label = round(MASE, 3)), vjust = -0.5, size = 3.5) +
+  
+  labs(
+    title = "Perbandingan Kinerja Model pada Data Uji",
+    subtitle = "Berdasarkan Nilai Mean Absolute Scaled Error (MASE)",
+    x = "Model",
+    y = "Nilai MASE"
+  ) +
+  
+  theme_minimal() +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1))
+```
+
+Beberapa alasan saya menggunakan MASE:
+
+<ol>
+  <li> Independen Terhadap Skala
+       MASE tidak terpengaruh oleh skala asli data (apakah data dalam puluhan atau jutaan). Ini membuatnya adil saat membandingkan data set yang berbeda.
+  <li> Menghindari Masalah Pembagian dengan Nol
+       MAPE akan gagal jika ada nilai aktual nol dalam data. MASE tidak memiliki masalah ini.
+  <li> Simetris
+       MAPE cenderung memberikan "hukuman" lebih besar pada peramalan yang terlalu rendah daripada yang terlalu tinggi. MASE lebih simetris dan adil.
+  <li> Benchmark yang Jelas
+       MASE memiliki interpretasi yang sangat kuat. Nilai MASE < 1 berarti model Anda lebih baik daripada model naive (yang meramalkan nilai periode sebelumnya). Nilai
+       MASE > 1 berarti model Anda lebih buruk daripada model naif. Ini memberikan dasar perbandingan yang sangat jelas.
+</ol>
+
+Pada data latih, 
+
+<ul>
+  <li> Berdasarkan MASE
+       Grafik untuk data latih menunjukkan dua model yang berkinerja jauh lebih baik daripada yang lain: SES (MASE: 1.007) dan DES (MASE: 1.142). Nilai MASE mereka yang 
+       mendekati 1 mengindikasikan bahwa performa mereka hampir sama baiknya dengan model naif pada data latih. Model-model lain, terutama varian SMA dan DMA dengan
+       periode panjang, menunjukkan performa yang jauh lebih buruk (MASE > 2).
+  <li> Berdasarkan MAPE
+       Hasil ini didukung oleh nilai MAPE. SES (2.96%) dan DES (3.30%) memiliki persentase kesalahan absolut rata-rata terendah. Ini berarti, saat
+       dilatih, kedua model ini menghasilkan kesalahan yang sangat kecil relatif terhadap nilai data asli.
+</ul>
+
+> Kesimpulan Awal: Model SES dan DES menunjukkan kemampuan terbaik untuk menyesuaikan diri (fitting) dengan pola pada data latih.
+
+Pada data uji,
+
+<ul>
+  <li> Berdasarkan MASE
+       Peringkat model berubah secara signifikan. Model DES (MASE: 1.839) menjadi pemenang yang jelas, diikuti oleh DMA.N.5 (MASE: 1.974). Yang menarik, SES—model terbaik
+       pada data latih—menunjukkan kinerja yang jauh lebih buruk di sini (MASE: 2.917). Ini adalah indikasi bahwa model SES mengalami overfitting; ia terlalu "menghafal"
+       data latih dan gagal menggeneralisasi polanya ke data baru.
+  <li> Berdasarkan MAPE
+       BLagi-lagi, MAPE mengonfirmasi temuan MASE. DES (5.90%) dan DMA.N.5 (6.09%) menunjukkan persentase kesalahan terkecil. Ini berarti, pada data uji, ramalan dari
+       model DES rata-rata hanya meleset sekitar 5.90% dari nilai aktual.
+</ul>
+
+> Kesimpulan dan Pemilihan Model Terbaik: Berdasarkan analisis gabungan dari data latih dan data uji, model DES (Double Exponential Smoothing) adalah model terbaik secara keseluruhan.
+
+Meskipun SES menunjukkan performa sedikit lebih baik pada data latih, kemampuannya untuk melakukan generalisasi pada data uji sangat buruk. Sebaliknya, DES menunjukkan kinerja yang kuat baik saat fitting (peringkat 2 pada data latih) maupun saat melakukan peramalan (peringkat 1 pada data uji), menjadikannya pilihan yang paling seimbang dan andal.
+
+Penting juga untuk dicatat bahwa semua model memiliki nilai MASE di atas 1 pada data uji, yang berarti tidak ada model yang berhasil mengalahkan performa model naif pada data baru. Ini menunjukkan bahwa data saham ini sangat sulit diprediksi.
+
+
+
+
+
+
+
