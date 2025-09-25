@@ -282,7 +282,7 @@ Korelasi antara $Y_t$ dengan $Y_{t-1}$ dari hasil simulasi mendekati perhitungan
 ```{r}
 # Yt
 
-yt_ar2 <- ar[-c(1,2)]
+yt_ar2 <- ar[-c(1, 2)]
 yt_ar2
 ```
 
